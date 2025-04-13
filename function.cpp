@@ -170,6 +170,12 @@ void RecvfromUpper(U8* buf, int len)
 //          3)根据iWorkMode，判断是否需要把数据内容打印
 //输入：U8 * buf,低层递交上来的数据， int len，数据长度，单位字节，int ifNo ，低层实体号码，用来区分是哪个低层
 //输出：
+// 设计思想如下：
+//1.判断是哪一层来的数据（可能的情况包括物理层，数据链路层，网络层）
+//2.1 如果是物理层的数据，就应该判断是bit流数组还是byte流数组吗，然后进行封装，确定是否是正常的数据，最后转发给上层数据
+//2.2 如果是数据链路层来的数据，就要使用采用csma/cd 协议来判断 ，然后考虑会不会太大了，影响正常转发，如果没有就正常转发即可
+//2.3 如果是网络层来的数据，就判断是否拥塞，然后用路由协议分析，最后输出即可（容易嘻嘻）
+// 这里是从下到上，相对应的就是上到下，思路清晰，不断使用相同的手段解封数据就好了 easy
 void RecvfromLower(U8* buf, int len, int ifNo)
 {
 	int retval;
@@ -179,8 +185,10 @@ void RecvfromLower(U8* buf, int len, int ifNo)
 		//低层是bit流数组格式，需要转换，才方便打印
 		bufRecv = (U8*)malloc(len / 8 + 1);
 		if (bufRecv == NULL) {
+			printf("没有成功给新的临时数据分配内存");
 			return;
 		}
+
 		//如果接口0是比特数组格式，先转换成字节数组，再向上递交
 		retval = BitArrayToByteArray(buf, len, bufRecv, len / 8 + 1);
 		retval = len;
@@ -190,6 +198,7 @@ void RecvfromLower(U8* buf, int len, int ifNo)
 	}
 	iRcvTotal += retval;
 	iRcvTotalCount++;
+
 
 	if (bufRecv != NULL) {
 		free(bufRecv);
