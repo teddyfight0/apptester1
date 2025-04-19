@@ -726,9 +726,9 @@ int main(int argc, char* argv[])
 		//从键盘读取
 		cout << "请输入设备号：";
 		cin >> s1;
-		//cout << "请输入层次名（大写）：";
-		//cin >> s2;
-		s2 = "APP";
+		cout << "请输入层次名（大写）：";
+		cin >> s2;
+		//s2 = "APP";
 		cout << "请输入实体号：";
 		cin >> s3;
 	}

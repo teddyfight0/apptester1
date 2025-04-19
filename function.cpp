@@ -1,6 +1,7 @@
 //apptester的功能文件
 #include <iostream>
 #include <conio.h>
+#include <random>
 #include "winsock.h"
 #include "stdio.h"
 #include "CfgFileParms.h"
@@ -18,6 +19,17 @@ int iSndErrorCount = 0;  //发送错误次数
 int iRcvTotal = 0;     //接收数据总量
 int iRcvTotalCount = 0; //转发数据总次数
 int iRcvUnknownCount = 0;  //收到不明来源数据总次数
+//------------------------------------------------
+int global_range = 10000;
+int output_x; // 这里就是生成的随机数x
+int output_y; // 这里是模仿的对于生成的随机数处理之后输出的y
+int external_random = 0; // 全局变量，存储接收到的随机数
+
+void generateTrueRandom() {
+	std::random_device rd; // 真随机数源
+	std::uniform_int_distribution<int> dist(0, global_range); // 均匀分布
+	output_x = dist(rd);
+}
 
 void print_statistics();
 void menu();
@@ -71,7 +83,7 @@ void EndFunction()
 //      1)根据iWorkMode工作模式，判断是否将键盘输入的数据发送，还是自动发送——这个功能其实是应用层的
 //        因为scanf会阻塞，导致计时器在等待键盘的时候完全失效，所以使用_kbhit()无阻塞、不间断地在计时的控制下判断键盘状态，这个点Get到没？
 //      2)不断刷新打印各种统计值，通过打印控制符的控制，可以始终保持在同一行打印，Get？
-//      3)如果工iWorkMode设置为自动发送，就每经过autoSendTime * DEFAULT_TIMER_INTERVAL ms，向接口0发送一次
+//      3)如果把iWorkMode设置为自动发送，就每经过autoSendTime * DEFAULT_TIMER_INTERVAL ms，向接口0发送一次
 //输入：时间到了就触发，只能通过全局变量供给输入
 //输出：这就是个不断努力干活的老实孩子
 void TimeOut()
@@ -136,7 +148,147 @@ void TimeOut()
 				break;
 			}
 		}
+		break;
+	case 2:
+		// 定时发送随机数（以位流格式），每隔 autoSendTime * DEFAULT_TIMER_INTERVAL ms 发送一次
+		if (printCount % autoSendTime == 0) {
+			// 生成新的随机数
+			generateTrueRandom();
+			printf("生成的随机数x：%d\n", output_x);
+			if (lowerMode[0] == 0) {
+				// 位流模式：将随机数转换为二进制位流
+				const int bit_len = 32; // 假设 int 是 32 位
+				bufSend = (U8*)malloc(bit_len); // 分配 32 位空间
+				if (bufSend == NULL) {
+					iSndErrorCount++; // 分配失败，记录错误
+					break;
+				}
 
+				// 直接将 output_x 转换为位流（从高位到低位）
+				for (i = 0; i < bit_len; i++) {
+					bufSend[i] = (output_x >> (bit_len - 1 - i)) & 1; // 提取每一位
+				}
+
+				// 发送位流到接口0
+				iSndRetval = SendtoLower(bufSend, bit_len, 0);
+
+				free(bufSend); // 释放临时缓冲区
+			}
+			else {
+				// 字节流模式：将随机数按字节发送（沿用原始逻辑）
+				len = 4; // 固定为 4 字节（32 位）
+				for (i = 0; i < len; i++) {
+					autoSendBuf[i] = (output_x >> (i * 8)) & 0xFF; // 按字节提取
+				}
+				iSndRetval = SendtoLower(autoSendBuf, len, 0);
+				iSndRetval = iSndRetval * 8; // 换算成位
+			}
+
+			// 发送统计
+			if (iSndRetval > 0) {
+				iSndTotalCount++;
+				iSndTotal += iSndRetval;
+			}
+			else {
+				iSndErrorCount++;
+			}
+
+			// 根据 iWorkMode % 10 决定是否打印
+			switch (iWorkMode % 10) {
+			case 1:
+				// 打印位流（使用 autoSendBuf 模拟位流打印）
+				len = 4; // 临时构造字节数组以打印
+				for (i = 0; i < len; i++) {
+					autoSendBuf[i] = (output_x >> (i * 8)) & 0xFF;
+				}
+				print_data_bit(autoSendBuf, len, 1);
+				break;
+			case 2:
+				// 打印字节流
+				len = 4;
+				for (i = 0; i < len; i++) {
+					autoSendBuf[i] = (output_x >> (i * 8)) & 0xFF;
+				}
+				print_data_byte(autoSendBuf, len, 1);
+				break;
+			case 0:
+				break;
+			}
+		}
+		break;
+	case 3:
+		// 定时发送：将本地随机数与接收的随机数相加，打印本地随机数，发送相加结果（以位流格式）
+		if (printCount % autoSendTime == 0) {
+			// 生成本地随机数
+			generateTrueRandom();
+			// 使用从 RecvfromLower 接收的 external_random
+			int sum_result = output_y + external_random; // 相加
+
+
+
+			// 打印本地随机数
+			printf("Generated local random number: %d\n", output_y);
+
+			if (lowerMode[0] == 0) {
+				// 位流模式：将相加结果转换为二进制位流
+				const int bit_len = 32; // 假设 int 是 32 位
+				bufSend = (U8*)malloc(bit_len); // 分配 32 位空间
+				if (bufSend == NULL) {
+					iSndErrorCount++; // 分配失败，记录错误
+					break;
+				}
+
+				// 直接将 sum_result 转换为位流（从高位到低位）
+				for (i = 0; i < bit_len; i++) {
+					bufSend[i] = (sum_result >> (bit_len - 1 - i)) & 1; // 提取每一位
+				}
+
+				// 发送位流到接口0
+				iSndRetval = SendtoLower(bufSend, bit_len, 0);
+
+				free(bufSend); // 释放临时缓冲区
+			}
+			else {
+				// 字节流模式：将相加结果按字节发送
+				len = 4; // 固定为 4 字节（32 位）
+				for (i = 0; i < len; i++) {
+					autoSendBuf[i] = (sum_result >> (i * 8)) & 0xFF; // 按字节提取
+				}
+				iSndRetval = SendtoLower(autoSendBuf, len, 0);
+				iSndRetval = iSndRetval * 8; // 换算成位
+			}
+
+			// 发送统计
+			if (iSndRetval > 0) {
+				iSndTotalCount++;
+				iSndTotal += iSndRetval;
+			}
+			else {
+				iSndErrorCount++;
+			}
+
+			// 根据 iWorkMode % 10 决定是否打印
+			switch (iWorkMode % 10) {
+			case 1:
+				// 打印位流（使用 autoSendBuf 模拟位流打印）
+				len = 4; // 临时构造字节数组以打印
+				for (i = 0; i < len; i++) {
+					autoSendBuf[i] = (sum_result >> (i * 8)) & 0xFF;
+				}
+				print_data_bit(autoSendBuf, len, 1);
+				break;
+			case 2:
+				// 打印字节流
+				len = 4;
+				for (i = 0; i < len; i++) {
+					autoSendBuf[i] = (sum_result >> (i * 8)) & 0xFF;
+				}
+				print_data_byte(autoSendBuf, len, 1);
+				break;
+			case 0:
+				break;
+			}
+		}
 		break;
 	}
 	//定期打印统计数据
@@ -176,6 +328,66 @@ void RecvfromUpper(U8* buf, int len)
 //2.2 如果是数据链路层来的数据，就要使用采用csma/cd 协议来判断 ，然后考虑会不会太大了，影响正常转发，如果没有就正常转发即可
 //2.3 如果是网络层来的数据，就判断是否拥塞，然后用路由协议分析，最后输出即可（容易嘻嘻）
 // 这里是从下到上，相对应的就是上到下，思路清晰，不断使用相同的手段解封数据就好了 easy
+
+
+void RecvfromLower(U8* buf, int len, int ifNo)
+{
+	int retval;
+	U8* bufRecv = NULL;
+
+	if (lowerMode[ifNo] == 0) {
+		// 低层是 bit 流数组格式，需要转换
+		bufRecv = (U8*)malloc(len / 8 + 1);
+		if (bufRecv == NULL) {
+			printf("没有成功给新的临时数据分配内存!");
+			return;
+		}
+
+		// 转换为字节数组
+		retval = BitArrayToByteArray(buf, len, bufRecv, len / 8 + 1);
+
+		// 解析随机数（假设前 4 字节是 32 位整数）
+		if (len >= 32) { // 确保位流足够长（32 位 = 4 字节）
+			external_random = (bufRecv[0] << 24) | (bufRecv[1] << 16) | (bufRecv[2] << 8) | bufRecv[3]; // 大端序
+		}
+		else {
+			external_random = 0; // 数据不足，设为 0
+		}
+	}
+	else {
+		// 字节流模式
+		retval = len * 8; // 换算成位，进行统计
+
+		// 解析随机数（假设前 4 字节是 32 位整数）
+		if (len >= 4) { // 确保字节流足够长
+			external_random = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]; // 大端序
+		}
+		else {
+			external_random = 0; // 数据不足，设为 0
+		}
+	}
+	iRcvTotal += retval;
+	iRcvTotalCount++;
+
+	if (bufRecv != NULL) {
+		free(bufRecv);
+	}
+
+	// 打印
+	switch (iWorkMode % 10) {
+	case 1:
+		cout << endl << "接收接口 " << ifNo << " 数据：" << endl;
+		print_data_bit(buf, len, lowerMode[ifNo]);
+		break;
+	case 2:
+		cout << endl << "接收接口 " << ifNo << " 数据：" << endl;
+		print_data_byte(buf, len, lowerMode[ifNo]);
+		break;
+	case 0:
+		break;
+	}
+}
+/*
 void RecvfromLower(U8* buf, int len, int ifNo)
 {
 	int retval;
@@ -185,13 +397,12 @@ void RecvfromLower(U8* buf, int len, int ifNo)
 		//低层是bit流数组格式，需要转换，才方便打印
 		bufRecv = (U8*)malloc(len / 8 + 1);
 		if (bufRecv == NULL) {
-			printf("没有成功给新的临时数据分配内存");
+			printf("没有成功给新的临时数据分配内存!");
 			return;
 		}
 
 		//如果接口0是比特数组格式，先转换成字节数组，再向上递交
 		retval = BitArrayToByteArray(buf, len, bufRecv, len / 8 + 1);
-		retval = len;
 	}
 	else {
 		retval = len * 8;//换算成位,进行统计
@@ -218,6 +429,7 @@ void RecvfromLower(U8* buf, int len, int ifNo)
 		break;
 	}
 }
+*/
 //打印统计信息
 void print_statistics()
 {
@@ -308,6 +520,8 @@ void menu()
 	cout << endl << "1-启动自动发送;" << endl << "2-停止自动发送; " << endl << "3-从键盘输入发送; ";
 	cout << endl << "4-仅打印统计信息; " << endl << "5-按比特流打印数据内容;" << endl << "6-按字节流打印数据内容;";
 	cout << endl << "7-打印工作参数表; ";
+	cout << endl << "8-发送x; ";
+	cout << endl << "9-将x减去计算出y，然后自动打印输出 ";
 	cout << endl << "0-取消" << endl << "请输入数字选择命令：";
 	cin >> selection;
 	switch (selection) {
@@ -321,7 +535,7 @@ void menu()
 		iWorkMode = iWorkMode % 10;
 		break;
 	case 3:
-		cout << "输入字符串(,不超过100字符)：";
+		cout << "输入字符串(不超过100字符)：";
 		cin >> kbBuf;
 		cout << "输入低层接口号：";
 		cin >> port;
@@ -376,6 +590,13 @@ void menu()
 		break;
 	case 7:
 		PrintParms();
+		break;
+	case 8:
+		// 这里生成随机数，并发送给另外一个设备
+		iWorkMode = 20 + iWorkMode % 10;
+		break;
+	case 9:
+		iWorkMode = 30 + iWorkMode % 10;
 		break;
 	}
 

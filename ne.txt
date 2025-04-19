@@ -21,17 +21,17 @@
 #   PHY1
 #   PHY2 LNK1
 #   PHY3
-1 PHY0 LNK0
-   PHY1
-2 PHY0 LNK0 NET0 APP0
-   PHY1 LNK1
-   PHY2 LNK2 NET1 
-3 PHY0 LNK0 NET0 APP0
-   PHY1 LNK1 
-4 PHY0 LNK0 NET0 APP0
-   PHY1 LNK1 
-5 PHY0 LNK0 NET0 APP0 
-6 PHY0 LNK0 NET0 APP0 
+1 | PHY[0] | LNK[0]
+   |  PHY[1]
+2 | PHY[0] | LNK[0] | NET[0] | APP[0]
+    | PHY[1] | LNK[1]
+    | PHY[2] | LNK[2] 
+3 | PHY[0] | LNK[0] | NET[0] | APP[0]
+    | PHY[1] | LNK[1] 
+4 | PHY[0] | LNK[0] | NET[0] | APP[0]
+    | PHY[1] | LNK[1] 
+5 | PHY[0] | LNK[0] | NET[0] | APP[0] 
+6 | PHY[0] | LNK[0] | NET[0] | APP[0] 
 ---------------------------------------------------------
 #全网拓扑连接描述区域，请注意参数中的标点符号都是英文格式
 #	点到点连接，格式 : A设备号,物理层接口号--B设备号,物理层接口号
@@ -45,8 +45,17 @@
 4,1--2,1
 ---------------------------------------------------------
 #统一控制平台的工作位置，等号不留空格
+#cmdAddr是一个监控服务器，由实验者自行搭建，其作用可以是收集各实体的工作数据，统一进行显示
+#oneTouchAddr是简化的启动程序，负责启动所有的本地实体，分为1个主站和多个从站，主站还会获得实体启动后的注册信息，并向关联实体发布，以维持整个体系的完整。如果该地址为本机，则本机为主站。
+oneTouchAddr=127.0.0.1
+oneTouchPort=30333
 cmdIpAddr=127.0.0.1
 cmdPort=20000
+phySlotTime = 20
+trafficPlotRate = 100
+errorProb = 20
+bufferSize = 80000
+heartBeatingTime = 50
 ---------------------------------------------------------
 #其它参数区域，存放实验者自行定义的各种参数，如果用例程中的cfgFileParms类，通过getValueInt和getValueStr，提供参数名，就能得到参数值
 #除了开头三行必须保持顺序：deviceID，layer,entity,其他参数行的位置可以交换，没有写出来的物理层实体参数，程序会使用默认参数
@@ -54,24 +63,27 @@ deviceID = 1
 	layer = PHY
 		entityID = 0
 			errorProb = 20
-			bufferSize = 80000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 		entityID = 1
 			errorProb = 20
-			bufferSize = 80000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 	layer = LNK
 		entityID = 0
 			myAddr = 10
+#			myAddr是个自定义参数，例子没有用，建议可作为类似MAC来使用
 			lowerMode0 = 0
+#			这个值要与关联的那个物理层实体的upperMode一致
 		-----------------------------
 	layer = NET
 		entityID = 0
 			lowerMode0 = 1
 		-----------------------------		
 	layer = APP
+#网元1是交换机，没有设置APP层
 		entityID = 0
 			myAddr = 1
 			workMode = 10
@@ -81,18 +93,18 @@ deviceID = 1
 deviceID = 2
 	layer = PHY
 		entityID = 0
-			errorProb = 20
-			bufferSize = 80000
+			errorProb = 2000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 		entityID = 1
-			errorProb = 20
-			bufferSize = 80000
+			errorProb = 2000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 		entityID = 2
 			errorProb = 20
-			bufferSize = 80000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 	layer = LNK
@@ -114,18 +126,18 @@ deviceID = 2
 		entityID = 0
 			myAddr = 2
 			workMode = 0
-			autoSendTime = 1
-			autoSendSize = 8000
+			autoSendTime = 10
+			autoSendSize = 800
 		----------------------------------------------------------
 deviceID = 3
 	layer = PHY
 		entityID = 0
 			errorProb = 20
-			bufferSize = 80000
+			bufferSize = 40000
 		-----------------------------
 		entityID = 1
 			errorProb = 20
-			bufferSize = 80000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 	layer = LNK
@@ -152,12 +164,12 @@ deviceID = 4
 	layer = PHY
 		entityID = 0
 			errorProb = 20
-			bufferSize = 80000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 		entityID = 1
 			errorProb = 20
-			bufferSize = 80000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 	layer = LNK
@@ -184,7 +196,7 @@ deviceID = 5
 	layer = PHY
 		entityID = 0
 			errorProb = 20
-			bufferSize = 80000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 	layer = LNK
@@ -207,7 +219,7 @@ deviceID = 6
 	layer = PHY
 		entityID = 0
 			errorProb = 20
-			bufferSize = 80000
+			bufferSize = 40000
 			upperMode = 0
 		-----------------------------
 	layer = LNK
