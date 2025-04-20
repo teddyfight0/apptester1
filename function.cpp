@@ -24,12 +24,20 @@ int global_range = 10000;
 int output_x; // 这里就是生成的随机数x
 int output_y; // 这里是模仿的对于生成的随机数处理之后输出的y
 int external_random = 0; // 全局变量，存储接收到的随机数
-
-void generateTrueRandom() {
+int new_data_received = 0; // 全局标志，表示收到新数据
+static int last_external_random = 0; // 静态变量，存储上一次的随机数
+//------------------------------------------------
+void generateTrueRandom_x() {
 	std::random_device rd; // 真随机数源
 	std::uniform_int_distribution<int> dist(0, global_range); // 均匀分布
 	output_x = dist(rd);
 }
+void generateTrueRandom_y() {
+	std::random_device rd; // 真随机数源
+	std::uniform_int_distribution<int> dist(0, global_range); // 均匀分布
+	output_y = dist(rd);
+}
+
 
 void print_statistics();
 void menu();
@@ -92,6 +100,10 @@ void TimeOut()
 	int len;
 	U8* bufSend;
 	int i;
+	static clock_t last_send_time = 0; // 记录 case 2 上一次发送的时间（函数级静态变量）
+	const clock_t delay_ms = 5000; // 5 秒延时 (5000ms)
+	clock_t current_time = clock(); // 获取当前时间
+	clock_t elapsed_ms = (current_time - last_send_time) * 1000 / CLOCKS_PER_SEC; // 转换为毫秒
 
 	printCount++;
 	if (_kbhit()) {
@@ -150,11 +162,17 @@ void TimeOut()
 		}
 		break;
 	case 2:
-		// 定时发送随机数（以位流格式），每隔 autoSendTime * DEFAULT_TIMER_INTERVAL ms 发送一次
-		if (printCount % autoSendTime == 0) {
+		// 每隔 5 秒发送一次随机数（以位流或字节流格式）
+		
+		
+		 elapsed_ms = (current_time - last_send_time) * 1000 / CLOCKS_PER_SEC; // 转换为毫秒
+
+		// 检查是否首次发送或已过去 5 秒
+		if (last_send_time == 0 || elapsed_ms >= delay_ms) {
 			// 生成新的随机数
-			generateTrueRandom();
+			generateTrueRandom_x();
 			printf("生成的随机数x：%d\n", output_x);
+
 			if (lowerMode[0] == 0) {
 				// 位流模式：将随机数转换为二进制位流
 				const int bit_len = 32; // 假设 int 是 32 位
@@ -175,7 +193,7 @@ void TimeOut()
 				free(bufSend); // 释放临时缓冲区
 			}
 			else {
-				// 字节流模式：将随机数按字节发送（沿用原始逻辑）
+				// 字节流模式：将随机数按字节发送
 				len = 4; // 固定为 4 字节（32 位）
 				for (i = 0; i < len; i++) {
 					autoSendBuf[i] = (output_x >> (i * 8)) & 0xFF; // 按字节提取
@@ -214,20 +232,26 @@ void TimeOut()
 			case 0:
 				break;
 			}
+
+			// 更新发送时间
+			last_send_time = current_time;
+			printf("case 2: Sent random number, pausing for 5 seconds\n"); // 调试输出
 		}
 		break;
 	case 3:
-		// 定时发送：将本地随机数与接收的随机数相加，打印本地随机数，发送相加结果（以位流格式）
-		if (printCount % autoSendTime == 0) {
+		// 仅在收到一次新数据时处理：生成随机数，与接收的随机数相加，打印本地随机数，发送相加结果
+		if (new_data_received) {
 			// 生成本地随机数
-			generateTrueRandom();
+			generateTrueRandom_y();
+
 			// 使用从 RecvfromLower 接收的 external_random
 			int sum_result = output_y + external_random; // 相加
 
-
-
 			// 打印本地随机数
 			printf("Generated local random number: %d\n", output_y);
+
+			// 调试输出（可选，确认数据）
+			// printf("Received external random: %d, Sum result: %d\n", external_random, sum_result);
 
 			if (lowerMode[0] == 0) {
 				// 位流模式：将相加结果转换为二进制位流
@@ -235,6 +259,8 @@ void TimeOut()
 				bufSend = (U8*)malloc(bit_len); // 分配 32 位空间
 				if (bufSend == NULL) {
 					iSndErrorCount++; // 分配失败，记录错误
+					new_data_received = 0; // 重置标志
+					// printf("Failed to allocate bufSend\n"); // 调试输出
 					break;
 				}
 
@@ -265,6 +291,7 @@ void TimeOut()
 			}
 			else {
 				iSndErrorCount++;
+				// printf("SendtoLower failed\n"); // 调试输出
 			}
 
 			// 根据 iWorkMode % 10 决定是否打印
@@ -288,11 +315,14 @@ void TimeOut()
 			case 0:
 				break;
 			}
+
+			// 重置标志，确保只处理一次，直到收到新数据
+			new_data_received = 0;
+			 printf("Processed data, reset new_data_received\n"); // 调试输出
 		}
 		break;
 	}
 	//定期打印统计数据
-	print_statistics();
 
 }
 //------------华丽的分割线，以下是数据的收发,--------------------------------------------
@@ -334,6 +364,7 @@ void RecvfromLower(U8* buf, int len, int ifNo)
 {
 	int retval;
 	U8* bufRecv = NULL;
+	int current_random = 0; // 临时存储当前解析的随机数
 
 	if (lowerMode[ifNo] == 0) {
 		// 低层是 bit 流数组格式，需要转换
@@ -348,10 +379,25 @@ void RecvfromLower(U8* buf, int len, int ifNo)
 
 		// 解析随机数（假设前 4 字节是 32 位整数）
 		if (len >= 32) { // 确保位流足够长（32 位 = 4 字节）
-			external_random = (bufRecv[0] << 24) | (bufRecv[1] << 16) | (bufRecv[2] << 8) | bufRecv[3]; // 大端序
+			current_random = (bufRecv[0] << 24) | (bufRecv[1] << 16) | (bufRecv[2] << 8) | bufRecv[3]; // 大端序
+			if (current_random != last_external_random) {
+				// 新数据与上一次不同，接受
+				external_random = current_random;
+				last_external_random = current_random; // 更新上一次的值
+				new_data_received = 1; // 设置标志
+				printf("1: Accepted new random = %d\n", external_random); // 调试输出
+			}
+			else {
+				// 数据与上一次相同，拒绝
+				new_data_received = 0;
+				printf("0: Rejected, same as last random = %d\n", current_random); // 调试输出
+			}
 		}
 		else {
-			external_random = 0; // 数据不足，设为 0
+			// 数据不足
+			external_random = 0;
+			new_data_received = 0;
+			printf("0: Insufficient bit data, len = %d\n", len); // 调试输出
 		}
 	}
 	else {
@@ -360,10 +406,25 @@ void RecvfromLower(U8* buf, int len, int ifNo)
 
 		// 解析随机数（假设前 4 字节是 32 位整数）
 		if (len >= 4) { // 确保字节流足够长
-			external_random = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]; // 大端序
+			current_random = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]; // 大端序
+			if (current_random != last_external_random) {
+				// 新数据与上一次不同，接受
+				external_random = current_random;
+				last_external_random = current_random; // 更新上一次的值
+				new_data_received = 1; // 设置标志
+				printf("1: Accepted new random = %d\n", external_random); // 调试输出
+			}
+			else {
+				// 数据与上一次相同，拒绝
+				new_data_received = 0;
+				printf("0: Rejected, same as last random = %d\n", current_random); // 调试输出
+			}
 		}
 		else {
-			external_random = 0; // 数据不足，设为 0
+			// 数据不足
+			external_random = 0;
+			new_data_received = 0;
+			printf("0: Insufficient byte data, len = %d\n", len); // 调试输出
 		}
 	}
 	iRcvTotal += retval;
@@ -453,6 +514,7 @@ void print_statistics()
 		cout << " 共接收 " << iRcvTotal << " 位," << iRcvTotalCount << " 次" ;
 		spin++;
 	}
+	printf("\n");
 }
 //PrintParms 打印工作参数，注意不是cfgFilms读出来的，而是目前生效的参数
 void PrintParms()
@@ -526,7 +588,6 @@ void menu()
 	cin >> selection;
 	switch (selection) {
 	case 0:
-		
 		break;
 	case 1:
 		iWorkMode = 10 + iWorkMode % 10; 

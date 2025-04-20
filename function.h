@@ -24,7 +24,7 @@ extern struct sockaddr_in lower_addr[10];  //×î¶à10¸öÏÂ²ã¶ÔÏó£¬Êı×éÏÂ±ê¾ÍÊÇÏÂ²ãÊ
 extern sockaddr_in cmd_addr;         //Í³Ò»¹ÜÀíÆ½Ì¨µØÖ·
 extern sockaddr_in oneTouch_addr;  //Ò»¼üÆô¶¯·şÎñÆ÷µØÖ·
 
-//start------»ªÀöµÄ·Ö¸îÏß---------------------------------------------------------
+
 //------------ÖØÒªµÄĞèÒª¿¼ÂÇÊµÏÖÆäÄÚÈİµÄº¯Êı------------------------------------------------------------
 void TimeOut();
 void RecvfromLower(U8* buf, int len, int ifNo);
